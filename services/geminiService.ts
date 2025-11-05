@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Investor, InvestorAnalysisResult, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult } from '../types';
+import { Investor, InvestorAnalysisResult, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult, PbvFirmData } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
@@ -138,8 +139,7 @@ The summary must be structured, data-driven, and use precise financial terminolo
 ### Instructions:
 *   **Tone:** Formal, objective, and analytical.
 *   **Specificity:** Refer to specific quantitative data (e.g., revenue figures, EBITDA margins, market size, target IRR) from the source document to substantiate all claims. Avoid vague statements.
-    {/* FIX: Escaped backticks in template literal to prevent syntax errors. */}
-*   **Format:** Use Markdown for all formatting (e.g., \\\`### Heading\\\`, \\\`* Bullet Point\\\`, \\\`**Bold Text**\\\`).
+*   **Format:** Use Markdown for all formatting (e.g., \`### Heading\`, \`* Bullet Point\`, \`**Bold Text**\`).
 
 ### DOCUMENT:
 ---
@@ -749,7 +749,6 @@ export const findClosedDeals = async (): Promise<ClosedDeal[]> => {
     try {
         const result = JSON.parse(cleanedJson);
         if (Array.isArray(result)) {
-            // Basic validation
             return result.filter(item => item.dealName && item.sourceUrl && item.fundSize) as ClosedDeal[];
         } else {
             throw new Error("Parsed JSON is not an array.");
@@ -841,5 +840,104 @@ export const categoriseFundStrategy = async (inputText: string): Promise<Strateg
     } catch (e) {
         console.error("Failed to parse JSON response for strategy categorization:", e, "\nRaw response:", cleanedJson);
         throw new Error("The AI returned an invalid data structure for the strategy categorization.");
+    }
+};
+
+export const generatePbvScoreData = async (companyUrl: string): Promise<PbvFirmData[]> => {
+    const metricsSchema = {
+        type: Type.OBJECT,
+        properties: {
+            searchVolumeIndex: { type: Type.NUMBER, description: "Estimated search volume index (0-10,000)." },
+            newsMentions: { type: Type.NUMBER, description: "Estimated number of significant news mentions in the last year (0-500)." },
+            socialMediaEngagement: { type: Type.NUMBER, description: "Estimated social media engagement score (0-100)." },
+            regulatoryActionCount: { type: Type.NUMBER, description: "Number of significant regulatory actions in the last 5 years (0-10). Lower is better." },
+            seniorProfilesCount: { type: Type.NUMBER, description: "Count of senior professionals with 10+ years tenure (0-50)." },
+            websiteTransparencyScore: { type: Type.NUMBER, description: "Score for website transparency (0-3)." },
+            fundLaunchCount3Y: { type: Type.NUMBER, description: "Number of new funds launched in the last 3 years (0-10)." },
+            peerFundSizeMM: { type: Type.NUMBER, description: "Size of their most recent flagship fund in USD millions (0-50000)." },
+            industryRankingPresence: { type: Type.NUMBER, description: "Count of appearances in top-tier industry rankings in the last 2 years (0-10)." }
+        },
+        required: [
+            "searchVolumeIndex", "newsMentions", "socialMediaEngagement",
+            "regulatoryActionCount", "seniorProfilesCount", "websiteTransparencyScore",
+            "fundLaunchCount3Y", "peerFundSizeMM", "industryRankingPresence"
+        ]
+    };
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            firms: {
+                type: Type.ARRAY,
+                description: "An array of 10 firms, with the first being the target firm.",
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        firmName: { type: Type.STRING },
+                        metrics: metricsSchema,
+                        rationales: {
+                            type: Type.OBJECT,
+                            description: "Rationale for each metric. Only for the target firm.",
+                            properties: {
+                                searchVolumeIndex: { type: Type.STRING }, newsMentions: { type: Type.STRING },
+                                socialMediaEngagement: { type: Type.STRING }, regulatoryActionCount: { type: Type.STRING },
+                                seniorProfilesCount: { type: Type.STRING }, websiteTransparencyScore: { type: Type.STRING },
+                                fundLaunchCount3Y: { type: Type.STRING }, peerFundSizeMM: { type: Type.STRING },
+                                industryRankingPresence: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    required: ["firmName", "metrics"]
+                }
+            }
+        },
+        required: ["firms"]
+    };
+
+    const prompt = `You are an expert institutional due diligence analyst specializing in brand evaluation for alternative asset managers. Your task is to analyze the firm at the URL: ${companyUrl}.
+
+You will research this target firm and create a synthetic peer group of 9 other plausible but anonymous firms (e.g., "Global Mega-Fund Peer", "Mid-Market Tech Specialist Peer"). Then, you will estimate raw values for 9 key metrics for all 10 firms based on publicly available information.
+
+**Instructions:**
+1.  **Identify the Target Firm:** The first firm in your output array MUST be the firm from the provided URL.
+2.  **Create Peer Group:** Generate 9 anonymous but descriptive peer firms.
+3.  **Estimate Metrics:** For all 10 firms (target + 9 peers), estimate the following 9 raw metric values based on your knowledge and web search.
+    *   **searchVolumeIndex:** (0-10,000) A proxy for public interest.
+    *   **newsMentions:** (0-500) Count of significant news articles in the last year.
+    *   **socialMediaEngagement:** (0-100) A score for their social media presence and interaction.
+    *   **regulatoryActionCount:** (0-10) Number of significant regulatory actions in the last 5 years. **LOWER is better.**
+    *   **seniorProfilesCount:** (0-50) Count of senior professionals with 10+ years tenure visible on public profiles (e.g., LinkedIn, website).
+    *   **websiteTransparencyScore:** (0-3) A score for website transparency (0=Poor, 1=Basic, 2=Good, 3=Excellent).
+    *   **fundLaunchCount3Y:** (0-10) Number of new funds launched in the last 3 years.
+    *   **peerFundSizeMM:** (0-50000) Size of their most recent flagship or comparable fund in USD millions.
+    *   **industryRankingPresence:** (0-10) Count of appearances in top-tier industry rankings/awards in the last 2 years.
+4.  **Provide Rationales:** For the **target firm ONLY**, provide a brief, one-sentence rationale for each of the 9 estimated metric values in the 'rationales' object. For peer firms, the 'rationales' object can be omitted or empty.
+
+Return ONLY a valid JSON object matching the schema.`;
+
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+            tools: [{ googleSearch: {} }],
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+        },
+    });
+
+    const jsonText = response.text.trim();
+    const cleanedJson = jsonText.replace(/^```json\s*/, '').replace(/```$/, '');
+
+    try {
+        const result = JSON.parse(cleanedJson);
+        if (result && Array.isArray(result.firms)) {
+            return result.firms as PbvFirmData[];
+        } else {
+            throw new Error("AI response did not contain a 'firms' array.");
+        }
+    } catch (e) {
+        console.error("Failed to parse JSON for PBV score:", e, "\nRaw response:", cleanedJson);
+        throw new Error("The AI returned an invalid data structure for the PBV analysis.");
     }
 };

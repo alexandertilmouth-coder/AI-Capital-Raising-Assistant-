@@ -1,3 +1,4 @@
+
 export interface Document {
   id: string;
   file: File;
@@ -27,12 +28,10 @@ export interface Transaction {
   summary: string;
 }
 
-// An investor parsed from the user's CSV
 export interface CsvInvestor {
-  [key: string]: string; // Flexible for different CSV headers
+  [key: string]: string; 
 }
 
-// The result of scoring one investor against the ideal profile
 export interface ScoredInvestor {
   name: string;
   matchScore: number;
@@ -42,14 +41,12 @@ export interface ScoredInvestor {
   linkedinUrl: string;
 }
 
-// A question from an investor and its corresponding answer
 export interface QuestionAndAnswer {
   question: string;
-  answer: string; // Contains the answer or an "ACTION_REQUIRED" flag
+  answer: string; 
 }
 
 
-// The result of analyzing an investor's email feedback
 export interface FeedbackAnalysisResult {
   interestScore: number;
   intentCategory: string;
@@ -58,7 +55,6 @@ export interface FeedbackAnalysisResult {
   questionsAndAnswers: QuestionAndAnswer[];
 }
 
-// Structured data extracted from a meeting transcript
 export interface MeetingData {
   firstName: string;
   lastName: string;
@@ -72,7 +68,6 @@ export interface MeetingData {
 }
 
 
-// The result of analyzing a meeting transcript
 export interface TranscriptAnalysisResult {
   overallScore: number;
   summary: string;
@@ -96,10 +91,41 @@ export interface ClosedDeal {
   sourceUrl: string;
 }
 
-// FIX: Add missing StrategyClassificationResult interface.
-// The result of classifying a fund strategy
 export interface StrategyClassificationResult {
   primaryStrategy: string;
   styleFocus: string[];
   optionalTag: string;
+}
+
+export interface PbvMetrics {
+  searchVolumeIndex: number;
+  newsMentions: number;
+  socialMediaEngagement: number;
+  regulatoryActionCount: number;
+  seniorProfilesCount: number;
+  websiteTransparencyScore: number;
+  fundLaunchCount3Y: number;
+  peerFundSizeMM: number;
+  industryRankingPresence: number;
+}
+
+export interface PbvFirmData {
+  firmName: string;
+  metrics: PbvMetrics;
+  rationales?: { [K in keyof PbvMetrics]?: string };
+}
+
+export interface PbvDetailedScore {
+    name: string;
+    score: number;
+    rationale: string;
+}
+
+export interface PbvResult {
+    firmName: string;
+    pbvScore: number;
+    maiScore: number;
+    pciScore: number;
+    osiScore: number;
+    detailedScores: PbvDetailedScore[];
 }

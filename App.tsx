@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { generateSummary, generateTeaser, identifyInvestors, INVESTOR_ANALYSIS_PROMPT, identifyRecentTransactions, generateFcaEmail, FCA_EMAIL_PROMPT, generateDiligenceQuestions, scoreInvestors, analyzeInvestorFeedback, analyzeTranscript, findClosedDeals, generateMarketAppetiteAnalysis, categoriseFundStrategy } from './services/geminiService';
-import { Investor, Document, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult } from './types';
+import { generateSummary, generateTeaser, identifyInvestors, INVESTOR_ANALYSIS_PROMPT, identifyRecentTransactions, generateFcaEmail, FCA_EMAIL_PROMPT, generateDiligenceQuestions, scoreInvestors, analyzeInvestorFeedback, analyzeTranscript, findClosedDeals, generateMarketAppetiteAnalysis, categoriseFundStrategy, generatePbvScoreData } from './services/geminiService';
+import { Investor, Document, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult, PbvResult, PbvFirmData, PbvMetrics } from './types';
 import { initialDeals, initialMarketAppetite } from './data/initialData';
 import Header from './components/Header';
 import Card from './components/Card';
@@ -42,7 +42,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isPromptModalOpen, setIsPromptModalOpen] = useState<boolean>(false);
   const [isEmailPromptModalOpen, setIsEmailPromptModalOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'closedDeals' | 'materials' | 'database' | 'feedback' | 'transcript' | 'categorisation' | 'activeRaises'>('activeRaises');
+  const [activeTab, setActiveTab] = useState<'closedDeals' | 'materials' | 'database' | 'feedback' | 'transcript' | 'categorisation' | 'activeRaises' | 'branding'>('branding');
 
   // Investor Database State
   const [investorDB, setInvestorDB] = useState<CsvInvestor[]>([]);
@@ -92,6 +92,11 @@ const App: React.FC = () => {
   } | null>(null);
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
 
+  // Fund Branding State
+  const [pbvUrl, setPbvUrl] = useState<string>('');
+  const [pbvResult, setPbvResult] = useState<PbvResult | null>(null);
+  const [isAnalyzingPbv, setIsAnalyzingPbv] = useState<boolean>(false);
+  const [pbvError, setPbvError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof pdfjsLib !== 'undefined') {
@@ -106,8 +111,6 @@ const App: React.FC = () => {
     setError(null);
     setIsParsing(true);
 
-    // FIX: Explicitly type `file` as `File` to resolve multiple TypeScript errors
-    // where properties of `file` were not accessible due to it being an 'unknown' type.
     const filePromises = Array.from(files).map((file: File) => {
       return new Promise<{ file: File, text: string }>((resolve, reject) => {
         const allowedTypes = ['text/plain', 'text/markdown', 'application/pdf'];
@@ -203,7 +206,6 @@ const App: React.FC = () => {
             }
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
             const data = lines.slice(1).map(line => {
-                 // Basic CSV parsing, may need to be more robust for complex CSVs
                 const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
                 const entry: CsvInvestor = {};
                 headers.forEach((header, i) => {
@@ -371,7 +373,6 @@ const App: React.FC = () => {
     setIsPredicting(true);
     setPredictionResult(null);
 
-    // Simulate a short delay for UX, as if an AI is "thinking"
     setTimeout(() => {
         const currentYear = new Date().getFullYear();
         const fundAge = currentYear - predictorInputs.vintageYear;
@@ -452,6 +453,182 @@ const App: React.FC = () => {
     }
   }, [closedDeals]);
 
+    const calculatePbvDecileScore = (series: number[], higherIsBetter = true): number[] => {
+        const N = series.length;
+        if (N === 0) return [];
+
+        const indexedSeries = series.map((value, originalIndex) => ({ value, originalIndex }));
+
+        indexedSeries.sort((a, b) => {
+            if (a.value === b.value) return 0;
+            return higherIsBetter ? b.value - a.value : a.value - b.value;
+        });
+
+        const tempRanks = new Array(N);
+        for (let i = 0; i < N; i++) {
+            if (i > 0 && indexedSeries[i].value === indexedSeries[i - 1].value) {
+                tempRanks[i] = tempRanks[i - 1];
+            } else {
+                tempRanks[i] = i + 1;
+            }
+        }
+
+        const ranks = new Array(N);
+        indexedSeries.forEach((item, i) => {
+            ranks[item.originalIndex] = tempRanks[i];
+        });
+
+        const initialDeciles = ranks.map(rank => {
+            const decile = Math.ceil((N - rank + 1) / (N / 10));
+            return Math.max(1, Math.min(10, decile));
+        });
+        
+        const tempStructure = series.map((value, index) => ({
+            rawValue: value,
+            initialDecile: initialDeciles[index]
+        }));
+
+        const avgDecileByValue = new Map<number, number>();
+        const grouped = tempStructure.reduce((acc, item) => {
+            const key = item.rawValue.toString();
+            if(!acc[key]) acc[key] = [];
+            acc[key].push(item.initialDecile);
+            return acc;
+        }, {} as Record<string, number[]>);
+
+
+        Object.entries(grouped).forEach(([rawValueStr, deciles]) => {
+            const rawValue = parseFloat(rawValueStr);
+            const average = deciles.reduce((sum, d) => sum + d, 0) / deciles.length;
+            avgDecileByValue.set(rawValue, average);
+        });
+
+        const finalScores = series.map(rawValue => avgDecileByValue.get(rawValue) || 0);
+
+        return finalScores.map(score => {
+            const rounded = Math.round(score * 100) / 100;
+            return Math.max(1, Math.min(10, rounded));
+        });
+    };
+
+
+  const handleGeneratePbvScore = useCallback(async () => {
+        if (!pbvUrl.trim() || !pbvUrl.includes('.')) {
+            setPbvError("Please enter a valid company website URL.");
+            return;
+        }
+        setIsAnalyzingPbv(true);
+        setPbvError(null);
+        setPbvResult(null);
+
+        try {
+            const firmsData = await generatePbvScoreData(pbvUrl);
+
+            if (!firmsData || !Array.isArray(firmsData) || firmsData.length === 0) {
+                throw new Error("AI failed to return valid data. The website may be inaccessible or the topic too niche for analysis.");
+            }
+            
+            const originalTargetFirmName = firmsData[0]?.firmName;
+            if (!originalTargetFirmName) {
+                 throw new Error("AI response was malformed and did not include the target firm's name.");
+            }
+
+            const metricKeys: (keyof PbvMetrics)[] = [
+                'searchVolumeIndex', 'newsMentions', 'socialMediaEngagement', 
+                'regulatoryActionCount', 'seniorProfilesCount', 'websiteTransparencyScore',
+                'fundLaunchCount3Y', 'peerFundSizeMM', 'industryRankingPresence'
+            ];
+
+            const validatedFirmsData = firmsData.reduce((acc: PbvFirmData[], firm) => {
+                if (!firm || typeof firm !== 'object' || !firm.metrics) {
+                    console.warn('Filtering out invalid firm data (missing metrics object):', firm);
+                    return acc;
+                }
+
+                const cleanMetrics: Partial<PbvMetrics> = {};
+                let allMetricsValid = true;
+
+                for (const key of metricKeys) {
+                    const rawValue = firm.metrics[key];
+                    const numValue = parseFloat(rawValue as any);
+
+                    if (isNaN(numValue)) {
+                        console.warn(`Filtering out firm "${firm.firmName}" due to invalid non-numeric metric "${key}":`, rawValue);
+                        allMetricsValid = false;
+                        break;
+                    }
+                    cleanMetrics[key] = numValue;
+                }
+
+                if (allMetricsValid) {
+                    acc.push({ ...firm, metrics: cleanMetrics as PbvMetrics });
+                }
+                
+                return acc;
+            }, []);
+
+            if (validatedFirmsData.length < 2) {
+                throw new Error("AI could not generate enough valid data for a comparative analysis. Please try a different URL.");
+            }
+            
+            const targetFirmInValidatedList = validatedFirmsData.find(f => f.firmName === originalTargetFirmName);
+            
+            if (!targetFirmInValidatedList) {
+                throw new Error("The data for the target firm was invalid and could not be processed. This can happen if the AI returns non-numeric values for its metrics. Please try again.");
+            }
+
+            const finalFirmsForScoring = [
+                targetFirmInValidatedList,
+                ...validatedFirmsData.filter(f => f.firmName !== originalTargetFirmName)
+            ];
+
+            const targetFirm = finalFirmsForScoring[0];
+
+            const decileScoresByMetric: { [key: string]: number[] } = {};
+
+            for (const key of metricKeys) {
+                const values = finalFirmsForScoring.map(f => f.metrics[key]);
+                const higherIsBetter = key !== 'regulatoryActionCount';
+                decileScoresByMetric[key] = calculatePbvDecileScore(values, higherIsBetter);
+            }
+
+            const targetDecileScores: { [key: string]: number } = {};
+            metricKeys.forEach(key => {
+                targetDecileScores[key] = decileScoresByMetric[key][0];
+            });
+
+            const MAI_Score = (targetDecileScores.searchVolumeIndex + targetDecileScores.newsMentions + targetDecileScores.socialMediaEngagement) / 3;
+            const PCI_Score = (targetDecileScores.regulatoryActionCount + targetDecileScores.seniorProfilesCount + targetDecileScores.websiteTransparencyScore) / 3;
+            const OSI_Score = (targetDecileScores.fundLaunchCount3Y + targetDecileScores.peerFundSizeMM + targetDecileScores.industryRankingPresence) / 3;
+            const PBV_Composite_Score = (MAI_Score + PCI_Score + OSI_Score) / 3;
+
+            setPbvResult({
+                firmName: targetFirm.firmName,
+                pbvScore: parseFloat(PBV_Composite_Score.toFixed(2)),
+                maiScore: parseFloat(MAI_Score.toFixed(2)),
+                pciScore: parseFloat(PCI_Score.toFixed(2)),
+                osiScore: parseFloat(OSI_Score.toFixed(2)),
+                detailedScores: [
+                    { name: 'Search Volume', score: targetDecileScores.searchVolumeIndex, rationale: targetFirm.rationales?.searchVolumeIndex ?? 'N/A' },
+                    { name: 'News Mentions', score: targetDecileScores.newsMentions, rationale: targetFirm.rationales?.newsMentions ?? 'N/A' },
+                    { name: 'Social Media Engagement', score: targetDecileScores.socialMediaEngagement, rationale: targetFirm.rationales?.socialMediaEngagement ?? 'N/A' },
+                    { name: 'Regulatory Actions (Lower is Better)', score: targetDecileScores.regulatoryActionCount, rationale: targetFirm.rationales?.regulatoryActionCount ?? 'N/A' },
+                    { name: 'Senior Team Tenure', score: targetDecileScores.seniorProfilesCount, rationale: targetFirm.rationales?.seniorProfilesCount ?? 'N/A' },
+                    { name: 'Website Transparency', score: targetDecileScores.websiteTransparencyScore, rationale: targetFirm.rationales?.websiteTransparencyScore ?? 'N/A' },
+                    { name: 'Recent Fund Launches', score: targetDecileScores.fundLaunchCount3Y, rationale: targetFirm.rationales?.fundLaunchCount3Y ?? 'N/A' },
+                    { name: 'Peer Fund Size', score: targetDecileScores.peerFundSizeMM, rationale: targetFirm.rationales?.peerFundSizeMM ?? 'N/A' },
+                    { name: 'Industry Rankings', score: targetDecileScores.industryRankingPresence, rationale: targetFirm.rationales?.industryRankingPresence ?? 'N/A' },
+                ]
+            });
+
+        } catch (err: any) {
+            console.error('Error generating PBV score:', err);
+            setPbvError(err.message || 'An error occurred while analyzing the brand. Please try again.');
+        } finally {
+            setIsAnalyzingPbv(false);
+        }
+  }, [pbvUrl]);
+
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -471,20 +648,19 @@ const App: React.FC = () => {
   }, []);
 
   const filterOptions = useMemo(() => {
-    // FIX: Explicitly type Set to <string> to ensure correct type inference for sort.
-    const geographies = ['All', ...Array.from(new Set<string>(closedDeals.map(d => normalizeGeography(d.geographyFocus))))].sort((a,b) => a === 'All' ? -1 : b === 'All' ? 1 : a.localeCompare(b));
-    // FIX: Explicitly type Set to <string> for type safety.
-    const assetClasses = ['All', ...Array.from(new Set<string>(closedDeals.map(d => d.assetClass)))].sort();
+    // FIX: Explicitly type sort callback parameters to resolve 'unknown' type and allow 'localeCompare'.
+    const geographies = ['All', ...Array.from(new Set(closedDeals.map(d => normalizeGeography(d.geographyFocus))))].sort((a: string, b: string) => a === 'All' ? -1 : b === 'All' ? 1 : a.localeCompare(b));
+    const assetClasses = ['All', ...Array.from(new Set(closedDeals.map(d => d.assetClass)))].sort();
 
-    // FIX: Explicitly type Set to <string> to ensure correct type inference for forEach.
-    const uniqueStrategies = [...new Set<string>(closedDeals.map(d => d.strategy))].sort();
+    const uniqueStrategies = [...new Set(closedDeals.map(d => d.strategy))].sort();
     const strategies = {
         bySize: [] as string[],
         bySector: [] as string[],
         other: [] as string[]
     };
     
-    uniqueStrategies.forEach(s => {
+    // FIX: Explicitly type forEach callback parameter 's' as string to resolve errors on subsequent method calls.
+    uniqueStrategies.forEach((s: string) => {
         const sLower = s.toLowerCase();
         if (sLower.includes('cap') || sLower.includes('buyout') || sLower.includes('venture') || sLower.includes('growth equity')) {
             strategies.bySize.push(s);
@@ -623,6 +799,11 @@ const App: React.FC = () => {
     </svg>
 );
 
+  const BrandingIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    </svg>
+  );
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'bg-green-500';
@@ -630,6 +811,13 @@ const App: React.FC = () => {
     if (score >= 40) return 'bg-yellow-500';
     return 'bg-red-500';
   }
+
+  const getDecileScoreColor = (score: number) => {
+    if (score >= 8) return { text: 'text-green-400', bg: 'bg-green-500' };
+    if (score >= 6) return { text: 'text-sky-400', bg: 'bg-sky-500' };
+    if (score >= 4) return { text: 'text-yellow-400', bg: 'bg-yellow-500' };
+    return { text: 'text-red-400', bg: 'bg-red-500' };
+  };
 
   const getIntentCategoryTagColor = (category: string) => {
     switch(category) {
@@ -649,6 +837,11 @@ const App: React.FC = () => {
       <main className="p-4 md:p-8 flex-grow">
         <div className="container mx-auto">
             <div className="mb-6 flex border-b border-gray-700 overflow-x-auto">
+                 <TabButton
+                    label="Public Brand Visibility"
+                    isActive={activeTab === 'branding'}
+                    onClick={() => setActiveTab('branding')}
+                />
                  <TabButton
                     label="Recently Closed Funds"
                     isActive={activeTab === 'closedDeals'}
@@ -685,6 +878,92 @@ const App: React.FC = () => {
                     onClick={() => setActiveTab('activeRaises')}
                 />
             </div>
+            
+            {activeTab === 'branding' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div className="lg:col-span-5 flex flex-col gap-6">
+                        <Card title="Public Brand & Visibility (PBV) Analysis" icon={<BrandingIcon />}>
+                           <p className="text-sm text-gray-400 mb-4">Enter a fund manager's website to generate a Public Brand & Visibility (PBV) score. The AI will analyze the firm against a synthetic peer group across 9 public-proxy metrics to produce a decile-based score.</p>
+                           <div className="flex flex-col gap-4">
+                                <input
+                                    type="url"
+                                    value={pbvUrl}
+                                    onChange={(e) => setPbvUrl(e.target.value)}
+                                    placeholder="https://www.blackstone.com"
+                                    className="w-full p-3 bg-gray-900 border border-gray-700 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors text-gray-300"
+                                />
+                               <button
+                                    onClick={handleGeneratePbvScore}
+                                    disabled={isAnalyzingPbv}
+                                    className="w-full text-lg font-bold bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-cyan-900/50 flex items-center justify-center"
+                               >
+                                    {isAnalyzingPbv ? <><LoadingSpinner /> Analyzing Brand...</> : "Generate PBV Score"}
+                               </button>
+                           </div>
+                        </Card>
+                    </div>
+                     <div className="lg:col-span-7">
+                        {pbvError && <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg mb-4">{pbvError}</div>}
+                         {isAnalyzingPbv ? (
+                             <div className="flex justify-center items-center h-full min-h-[400px]">
+                                <div className="text-center">
+                                <LoadingSpinner />
+                                <p className="mt-4 text-lg text-cyan-300">AI is researching the firm and its peers... <br/>This may take up to a minute.</p>
+                                </div>
+                            </div>
+                        ) : pbvResult ? (
+                           <div className="space-y-6">
+                               <Card title={`Public Brand & Visibility (PBV) Score: ${pbvResult.firmName}`} icon={<BrandingIcon />}>
+                                    <div className="text-center">
+                                        <p className={`text-7xl font-bold ${getDecileScoreColor(pbvResult.pbvScore).text}`}>{pbvResult.pbvScore.toFixed(2)}</p>
+                                        <p className="text-gray-400 text-lg mt-1">out of 10.00</p>
+                                    </div>
+                               </Card>
+                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-gray-800/50 p-4 rounded-lg text-center border border-gray-700">
+                                       <p className="text-sm text-gray-400">Market Awareness (MAI)</p>
+                                       <p className={`text-4xl font-bold mt-1 ${getDecileScoreColor(pbvResult.maiScore).text}`}>{pbvResult.maiScore.toFixed(2)}</p>
+                                    </div>
+                                     <div className="bg-gray-800/50 p-4 rounded-lg text-center border border-gray-700">
+                                       <p className="text-sm text-gray-400">Public Credibility (PCI)</p>
+                                       <p className={`text-4xl font-bold mt-1 ${getDecileScoreColor(pbvResult.pciScore).text}`}>{pbvResult.pciScore.toFixed(2)}</p>
+                                    </div>
+                                     <div className="bg-gray-800/50 p-4 rounded-lg text-center border border-gray-700">
+                                       <p className="text-sm text-gray-400">Observable Skill (OSI)</p>
+                                       <p className={`text-4xl font-bold mt-1 ${getDecileScoreColor(pbvResult.osiScore).text}`}>{pbvResult.osiScore.toFixed(2)}</p>
+                                    </div>
+                               </div>
+                               <Card title="Detailed Score Breakdown" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}>
+                                <div className="space-y-4">
+                                    {pbvResult.detailedScores.map(item => {
+                                        const { text, bg } = getDecileScoreColor(item.score);
+                                        return (
+                                        <div key={item.name} className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <p className="font-semibold text-gray-300">{item.name}</p>
+                                                <p className={`font-bold text-lg ${text}`}>{item.score.toFixed(2)}</p>
+                                            </div>
+                                            <div className="w-full bg-gray-700 rounded-full h-2">
+                                                <div className={`${bg} h-2 rounded-full`} style={{width: `${item.score * 10}%`}}></div>
+                                            </div>
+                                            <p className="text-xs text-gray-500 italic mt-2">Rationale: {item.rationale}</p>
+                                        </div>
+                                        )
+                                    })}
+                                </div>
+                               </Card>
+                           </div>
+                        ) : (
+                             <div className="flex flex-col items-center justify-center min-h-[400px] text-center bg-gray-800/50 rounded-lg p-10 border-2 border-dashed border-gray-700">
+                                <h2 className="text-2xl font-bold text-gray-400">PBV Score Will Appear Here</h2>
+                                <p className="mt-2 text-gray-500">
+                                    Enter a fund manager's website and click "Generate PBV Score".
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {activeTab === 'materials' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
