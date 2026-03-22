@@ -1,4 +1,4 @@
-import { ClosedDeal } from '../types';
+import { ClosedDeal } from '@/types';
 
 export const initialDeals: ClosedDeal[] = [
     {

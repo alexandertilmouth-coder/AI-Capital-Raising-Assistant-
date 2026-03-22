@@ -12,7 +12,7 @@ interface PieChartProps {
 
 const PieChart: React.FC<PieChartProps> = ({ data }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  if (total === 0) return <div className="text-center text-gray-500">No data to display</div>;
+  if (total === 0) return <div className="text-center text-slate-400">No data to display</div>;
 
   let cumulativePercent = 0;
 
@@ -27,15 +27,12 @@ const PieChart: React.FC<PieChartProps> = ({ data }) => {
     const percent = slice.value / total;
     cumulativePercent += percent;
     const [endX, endY] = getCoordinatesForPercent(cumulativePercent);
-
     const largeArcFlag = percent > 0.5 ? 1 : 0;
-
     const pathData = [
-      `M ${startX} ${startY}`, // Move
-      `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`, // Arc
-      'L 0 0', // Line
+      `M ${startX} ${startY}`,
+      `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`,
+      'L 0 0',
     ].join(' ');
-
     return <path key={slice.name} d={pathData} fill={slice.color}></path>;
   });
 
@@ -45,12 +42,12 @@ const PieChart: React.FC<PieChartProps> = ({ data }) => {
         {slices}
       </svg>
       <div className="mt-4 w-full">
-        <ul className="text-xs text-gray-300 space-y-1">
+        <ul className="text-xs text-slate-600 space-y-1">
           {data.map(slice => (
             <li key={slice.name} className="flex items-center">
               <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: slice.color }}></span>
               <span>{slice.name}</span>
-              <span className="ml-auto text-gray-400 font-semibold">{((slice.value / total) * 100).toFixed(0)}%</span>
+              <span className="ml-auto text-slate-500 font-semibold">{((slice.value / total) * 100).toFixed(0)}%</span>
             </li>
           ))}
         </ul>

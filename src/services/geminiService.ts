@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Investor, InvestorAnalysisResult, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult, PbvFirmData } from '../types';
+import { Investor, InvestorAnalysisResult, Transaction, CsvInvestor, ScoredInvestor, FeedbackAnalysisResult, TranscriptAnalysisResult, ClosedDeal, StrategyClassificationResult, PbvFirmData } from '@/types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
