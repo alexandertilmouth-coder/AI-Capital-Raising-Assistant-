@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, MessageSquareText, Target, Brain, ArrowRight, HelpCircle } from 'lucide-react';
+import { Loader2, MessageSquareText, Target, Brain, ArrowRight, HelpCircle, RotateCcw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -66,6 +66,12 @@ export default function InvestorFeedback() {
     }
   };
 
+  const handleStartOver = () => {
+    setFeedbackText('');
+    setFeedbackResult(null);
+    setFeedbackError(null);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -73,159 +79,168 @@ export default function InvestorFeedback() {
         <p className="text-slate-500 mt-1">Paste an investor's email reply to analyse their intent and interest level.</p>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* Left column - Input */}
-        <div className="col-span-5">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-slate-900">
-                <MessageSquareText className="h-5 w-5 text-blue-600" />
-                Investor Response
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                placeholder="Paste the investor's email reply here..."
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value)}
-                rows={14}
-                className="resize-none"
-              />
-              <Button
-                onClick={handleAnalyze}
-                disabled={isAnalyzingFeedback || !feedbackText.trim()}
-                className="w-full"
-              >
-                {isAnalyzingFeedback ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Analysing...
-                  </>
-                ) : (
-                  'Analyze Feedback'
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+      {feedbackResult && !isAnalyzingFeedback ? (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <MessageSquareText className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="text-sm text-slate-600 truncate">
+                {feedbackText.slice(0, 80)}{feedbackText.length > 80 ? '...' : ''}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleStartOver} className="shrink-0 ml-4">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Start Over
+            </Button>
+          </div>
 
-        {/* Right column - Results */}
-        <div className="col-span-7">
-          {isAnalyzingFeedback && (
+          <div className="space-y-4">
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
-                <p className="text-slate-500 font-medium">Analysing investor sentiment...</p>
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500 mb-1">Interest Score</p>
+                    <p className={cn('text-5xl font-bold', getScoreColor(feedbackResult.interestScore))}>
+                      {feedbackResult.interestScore}
+                    </p>
+                  </div>
+                  <Badge className={cn('text-sm', INTENT_BADGE_STYLES[feedbackResult.intentCategory] || 'bg-slate-100 text-slate-700')}>
+                    {feedbackResult.intentCategory}
+                  </Badge>
+                </div>
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={cn('h-full transition-all duration-500', getScoreBarColor(feedbackResult.interestScore))}
+                    style={{ width: `${feedbackResult.interestScore}%` }}
+                  />
+                </div>
               </CardContent>
             </Card>
-          )}
 
-          {feedbackError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-              <p className="text-red-700 text-sm font-medium">Analysis failed: {feedbackError}</p>
-            </div>
-          )}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-slate-900">
+                  <Brain className="h-4 w-4 text-blue-600" />
+                  AI Reasoning
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600 italic">{feedbackResult.reasoning}</p>
+              </CardContent>
+            </Card>
 
-          {!feedbackResult && !isAnalyzingFeedback && !feedbackError && (
-            <div className="rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center py-20">
-              <Target className="h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-slate-400 font-medium">Results will appear here</p>
-              <p className="text-slate-300 text-sm mt-1">Paste an investor email and click analyse</p>
-            </div>
-          )}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-slate-900">
+                  <ArrowRight className="h-4 w-4 text-blue-600" />
+                  Suggested Next Step
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-blue-600 font-bold">{feedbackResult.nextStep}</p>
+              </CardContent>
+            </Card>
 
-          {feedbackResult && !isAnalyzingFeedback && (
-            <div className="space-y-4">
-              {/* Score & Intent */}
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <p className="text-sm font-medium text-slate-500 mb-1">Interest Score</p>
-                      <p className={cn('text-5xl font-bold', getScoreColor(feedbackResult.interestScore))}>
-                        {feedbackResult.interestScore}
-                      </p>
-                    </div>
-                    <Badge className={cn('text-sm', INTENT_BADGE_STYLES[feedbackResult.intentCategory] || 'bg-slate-100 text-slate-700')}>
-                      {feedbackResult.intentCategory}
-                    </Badge>
-                  </div>
-                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={cn('h-full transition-all duration-500', getScoreBarColor(feedbackResult.interestScore))}
-                      style={{ width: `${feedbackResult.interestScore}%` }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Reasoning */}
+            {feedbackResult.questionsAndAnswers.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-slate-900">
-                    <Brain className="h-4 w-4 text-blue-600" />
-                    AI Reasoning
+                    <HelpCircle className="h-4 w-4 text-blue-600" />
+                    Question Analysis
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-slate-600 italic">{feedbackResult.reasoning}</p>
+                <CardContent className="space-y-3">
+                  {feedbackResult.questionsAndAnswers.map((qa, i) => {
+                    const isActionRequired = qa.answer.startsWith('ACTION_REQUIRED');
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          'rounded-lg p-4 border',
+                          isActionRequired
+                            ? 'bg-amber-50 border-amber-200'
+                            : 'bg-green-50 border-green-200'
+                        )}
+                      >
+                        <p className="font-semibold text-slate-900 text-sm mb-1">
+                          Q: {qa.question}
+                        </p>
+                        <p className={cn(
+                          'text-sm',
+                          isActionRequired ? 'text-amber-700 font-medium' : 'text-green-700'
+                        )}>
+                          A: {qa.answer}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
-
-              {/* Suggested Next Step */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-slate-900">
-                    <ArrowRight className="h-4 w-4 text-blue-600" />
-                    Suggested Next Step
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-blue-600 font-bold">{feedbackResult.nextStep}</p>
-                </CardContent>
-              </Card>
-
-              {/* Question Analysis */}
-              {feedbackResult.questionsAndAnswers.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-slate-900">
-                      <HelpCircle className="h-4 w-4 text-blue-600" />
-                      Question Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {feedbackResult.questionsAndAnswers.map((qa, i) => {
-                      const isActionRequired = qa.answer.startsWith('ACTION_REQUIRED');
-                      return (
-                        <div
-                          key={i}
-                          className={cn(
-                            'rounded-lg p-4 border',
-                            isActionRequired
-                              ? 'bg-amber-50 border-amber-200'
-                              : 'bg-green-50 border-green-200'
-                          )}
-                        >
-                          <p className="font-semibold text-slate-900 text-sm mb-1">
-                            Q: {qa.question}
-                          </p>
-                          <p className={cn(
-                            'text-sm',
-                            isActionRequired ? 'text-amber-700 font-medium' : 'text-green-700'
-                          )}>
-                            A: {qa.answer}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-slate-900">
+                  <MessageSquareText className="h-5 w-5 text-blue-600" />
+                  Investor Response
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Textarea
+                  placeholder="Paste the investor's email reply here..."
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  rows={14}
+                  className="resize-none"
+                />
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzingFeedback || !feedbackText.trim()}
+                  className="w-full"
+                >
+                  {isAnalyzingFeedback ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analysing...
+                    </>
+                  ) : (
+                    'Analyze Feedback'
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="col-span-7">
+            {isAnalyzingFeedback && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
+                  <p className="text-slate-500 font-medium">Analysing investor sentiment...</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {feedbackError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="text-red-700 text-sm font-medium">Analysis failed: {feedbackError}</p>
+              </div>
+            )}
+
+            {!isAnalyzingFeedback && !feedbackError && (
+              <div className="rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center py-20">
+                <Target className="h-10 w-10 text-slate-300 mb-3" />
+                <p className="text-slate-400 font-medium">Results will appear here</p>
+                <p className="text-slate-300 text-sm mt-1">Paste an investor email and click analyse</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

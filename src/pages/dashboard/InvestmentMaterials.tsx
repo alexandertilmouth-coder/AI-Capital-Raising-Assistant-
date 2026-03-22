@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Loader2, Upload, FileText, X, Eye, ExternalLink, Linkedin,
-  BookOpen, Target, ShieldCheck, Users, TrendingUp, Mail,
+  BookOpen, Target, ShieldCheck, Users, TrendingUp, Mail, RotateCcw,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,9 @@ import { renderMarkdown } from '@/lib/markdown';
 import CopyButton from '@/components/CopyButton';
 import type { Document, Investor, Transaction } from '@/types';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export default function InvestmentMaterials() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -168,110 +169,38 @@ export default function InvestmentMaterials() {
 
   const hasResults = summary || teaser || investors.length > 0 || diligenceQuestions.length > 0;
 
+  const handleStartOver = () => {
+    setDocuments([]);
+    setSummary('');
+    setTeaser('');
+    setInvestors([]);
+    setIdealInvestorProfile('');
+    setRecentTransactions([]);
+    setFcaEmail('');
+    setDiligenceQuestions([]);
+    setError(null);
+  };
+
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column - Upload & Controls */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* File Upload */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-slate-900">
-                <Upload className="h-5 w-5 text-blue-600" />
-                Upload Documents
-              </CardTitle>
-              <p className="text-sm text-slate-500 mt-1">
-                Upload investment memoranda (.pdf, .txt, .md) to generate materials.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
-                <div className="flex flex-col items-center">
-                  <Upload className="h-8 w-8 text-slate-400 mb-2" />
-                  <p className="text-sm text-slate-500">
-                    <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">PDF, TXT, MD up to 10MB</p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.txt,.md"
-                  multiple
-                  onChange={handleFileChange}
-                  disabled={isParsing}
-                />
-              </label>
+      {hasResults ? (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="text-sm text-slate-600 truncate">
+                {documents.map(d => d.file.name).join(', ')}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleStartOver} className="shrink-0 ml-4">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Start Over
+            </Button>
+          </div>
 
-              {isParsing && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Parsing documents...
-                </div>
-              )}
-
-              {documents.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-700">Active Documents ({documents.length})</p>
-                  {documents.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 rounded-md px-3 py-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="h-4 w-4 text-blue-600 shrink-0" />
-                        <span className="text-sm text-slate-700 truncate">{doc.file.name}</span>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveDocument(doc.id)}
-                        className="text-slate-400 hover:text-red-500 transition-colors shrink-0 ml-2"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <Button
-                onClick={handleGenerate}
-                disabled={isLoading || documents.length === 0}
-                className="w-full"
-                size="lg"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating Materials...
-                  </>
-                ) : (
-                  'Generate Investment Materials'
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Results */}
-        <div className="lg:col-span-7 space-y-6">
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
               <p className="text-sm font-medium text-red-600">{error}</p>
-            </div>
-          )}
-
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center py-16">
-              <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-              <p className="text-slate-500 font-medium">Generating investment materials...</p>
-              <p className="text-sm text-slate-400 mt-1">This may take 30-60 seconds</p>
-            </div>
-          )}
-
-          {!hasResults && !isLoading && !error && (
-            <div className="flex items-center justify-center min-h-[300px] rounded-lg border-2 border-dashed border-slate-200 bg-white">
-              <div className="text-center">
-                <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-400 font-medium">Results Will Appear Here</p>
-                <p className="text-sm text-slate-300 mt-1">Upload documents and click generate to begin</p>
-              </div>
             </div>
           )}
 
@@ -436,7 +365,111 @@ export default function InvestmentMaterials() {
             </Card>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-5 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-slate-900">
+                  <Upload className="h-5 w-5 text-blue-600" />
+                  Upload Documents
+                </CardTitle>
+                <p className="text-sm text-slate-500 mt-1">
+                  Upload investment memoranda (.pdf, .txt, .md) to generate materials.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                  <div className="flex flex-col items-center">
+                    <Upload className="h-8 w-8 text-slate-400 mb-2" />
+                    <p className="text-sm text-slate-500">
+                      <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">PDF, TXT, MD up to 10MB</p>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.txt,.md"
+                    multiple
+                    onChange={handleFileChange}
+                    disabled={isParsing}
+                  />
+                </label>
+
+                {isParsing && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Parsing documents...
+                  </div>
+                )}
+
+                {documents.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-700">Active Documents ({documents.length})</p>
+                    {documents.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between bg-slate-50 rounded-md px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                          <span className="text-sm text-slate-700 truncate">{doc.file.name}</span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveDocument(doc.id)}
+                          className="text-slate-400 hover:text-red-500 transition-colors shrink-0 ml-2"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isLoading || documents.length === 0}
+                  className="w-full"
+                  size="lg"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating Materials...
+                    </>
+                  ) : (
+                    'Generate Investment Materials'
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="lg:col-span-7 space-y-6">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-medium text-red-600">{error}</p>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
+                <p className="text-slate-500 font-medium">Generating investment materials...</p>
+                <p className="text-sm text-slate-400 mt-1">This may take 30-60 seconds</p>
+              </div>
+            )}
+
+            {!isLoading && !error && (
+              <div className="flex items-center justify-center min-h-[300px] rounded-lg border-2 border-dashed border-slate-200 bg-white">
+                <div className="text-center">
+                  <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-400 font-medium">Results Will Appear Here</p>
+                  <p className="text-sm text-slate-300 mt-1">Upload documents and click generate to begin</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Prompt Modal - Investor Analysis */}
       <Dialog open={promptModalOpen} onOpenChange={setPromptModalOpen}>

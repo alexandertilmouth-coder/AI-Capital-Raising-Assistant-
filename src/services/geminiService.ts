@@ -894,50 +894,76 @@ export const generatePbvScoreData = async (companyUrl: string): Promise<PbvFirmD
         required: ["firms"]
     };
 
-    const prompt = `You are an expert institutional due diligence analyst specializing in brand evaluation for alternative asset managers. Your task is to analyze the firm at the URL: ${companyUrl}.
+    const researchPrompt = `Research the alternative asset management firm at this URL: ${companyUrl}
 
-You will research this target firm and create a synthetic peer group of 9 other plausible but anonymous firms (e.g., "Global Mega-Fund Peer", "Mid-Market Tech Specialist Peer"). Then, you will estimate raw values for 9 key metrics for all 10 firms based on publicly available information.
+Provide a detailed factual brief covering:
+- The firm's full official name
+- Assets under management and flagship fund sizes
+- Number of senior professionals / team size
+- Recent fund launches (last 3 years)
+- Notable news coverage in the past year
+- Any regulatory actions or settlements in the last 5 years
+- Industry awards or ranking appearances
+- Social media presence and engagement level
+- Website quality and transparency
+- Key competitors and peer firms in the same space
 
-**Instructions:**
-1.  **Identify the Target Firm:** The first firm in your output array MUST be the firm from the provided URL.
-2.  **Create Peer Group:** Generate 9 anonymous but descriptive peer firms.
-3.  **Estimate Metrics:** For all 10 firms (target + 9 peers), estimate the following 9 raw metric values based on your knowledge and web search.
-    *   **searchVolumeIndex:** (0-10,000) A proxy for public interest.
-    *   **newsMentions:** (0-500) Count of significant news articles in the last year.
-    *   **socialMediaEngagement:** (0-100) A score for their social media presence and interaction.
-    *   **regulatoryActionCount:** (0-10) Number of significant regulatory actions in the last 5 years. **LOWER is better.**
-    *   **seniorProfilesCount:** (0-50) Count of senior professionals with 10+ years tenure visible on public profiles (e.g., LinkedIn, website).
-    *   **websiteTransparencyScore:** (0-3) A score for website transparency (0=Poor, 1=Basic, 2=Good, 3=Excellent).
-    *   **fundLaunchCount3Y:** (0-10) Number of new funds launched in the last 3 years.
-    *   **peerFundSizeMM:** (0-50000) Size of their most recent flagship or comparable fund in USD millions.
-    *   **industryRankingPresence:** (0-10) Count of appearances in top-tier industry rankings/awards in the last 2 years.
-4.  **Provide Rationales:** For the **target firm ONLY**, provide a brief, one-sentence rationale for each of the 9 estimated metric values in the 'rationales' object. For peer firms, the 'rationales' object can be omitted or empty.
+Be specific with numbers and facts where possible.`;
 
-Return ONLY a valid JSON object matching the schema.`;
-
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt,
+    const researchResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: researchPrompt,
         config: {
             tools: [{ googleSearch: {} }],
+        },
+    });
+
+    const researchText = researchResponse.text;
+
+    const structurePrompt = `You are an expert institutional due diligence analyst. Based on the research below about a firm, generate structured brand visibility data.
+
+### RESEARCH:
+---
+${researchText}
+---
+
+### TASK:
+Using the research above, create a JSON response with:
+1. The target firm as the FIRST element (use its real name as "firmName").
+2. 9 anonymous peer firms (e.g., "Global Mega-Fund Peer", "Mid-Market Specialist Peer") with plausible estimated metrics.
+3. For the target firm ONLY, include a "rationales" object with a one-sentence justification for each metric.
+
+Estimate these 9 metrics for all 10 firms:
+- searchVolumeIndex (0-10,000): proxy for public interest
+- newsMentions (0-500): significant news articles in the last year
+- socialMediaEngagement (0-100): social media presence score
+- regulatoryActionCount (0-10): regulatory actions in last 5 years (LOWER is better)
+- seniorProfilesCount (0-50): senior professionals with 10+ years tenure
+- websiteTransparencyScore (0-3): website transparency (0=Poor, 3=Excellent)
+- fundLaunchCount3Y (0-10): new funds launched in last 3 years
+- peerFundSizeMM (0-50000): most recent flagship fund size in USD millions
+- industryRankingPresence (0-10): appearances in top-tier rankings in last 2 years`;
+
+    const structuredResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: structurePrompt,
+        config: {
             responseMimeType: 'application/json',
             responseSchema: schema,
         },
     });
 
-    const jsonText = response.text.trim();
-    const cleanedJson = jsonText.replace(/^```json\s*/, '').replace(/```$/, '');
+    const jsonText = structuredResponse.text.trim();
 
     try {
-        const result = JSON.parse(cleanedJson);
-        if (result && Array.isArray(result.firms)) {
+        const result = JSON.parse(jsonText);
+        if (result && Array.isArray(result.firms) && result.firms.length > 0) {
             return result.firms as PbvFirmData[];
         } else {
-            throw new Error("AI response did not contain a 'firms' array.");
+            throw new Error("AI response did not contain a valid 'firms' array.");
         }
     } catch (e) {
-        console.error("Failed to parse JSON for PBV score:", e, "\nRaw response:", cleanedJson);
-        throw new Error("The AI returned an invalid data structure for the PBV analysis.");
+        console.error("Failed to parse JSON for PBV score:", e, "\nRaw response:", jsonText);
+        throw new Error("The AI returned an invalid data structure for the PBV analysis. Please try again.");
     }
 };

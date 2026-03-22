@@ -1,10 +1,9 @@
-import React, { useState, useCallback } from 'react';
-import { Loader2, Globe, BarChart3, Shield, TrendingUp } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { Loader2, Globe, BarChart3, Shield, TrendingUp, Search, Users, Calculator, CheckCircle2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
 import { generatePbvScoreData } from '@/services/geminiService';
 import type { PbvResult, PbvFirmData, PbvMetrics } from '@/types';
 
@@ -83,6 +82,36 @@ export default function BrandVisibility() {
   const [pbvResult, setPbvResult] = useState<PbvResult | null>(null);
   const [isAnalyzingPbv, setIsAnalyzingPbv] = useState(false);
   const [pbvError, setPbvError] = useState<string | null>(null);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadingSteps = [
+    { icon: Search, label: 'Researching firm via web search...' },
+    { icon: Users, label: 'Building peer group & estimating metrics...' },
+    { icon: BarChart3, label: 'Structuring data across 10 firms...' },
+    { icon: Calculator, label: 'Computing decile scores...' },
+  ];
+
+  useEffect(() => {
+    if (isAnalyzingPbv) {
+      setLoadingStep(0);
+      let step = 0;
+      stepTimerRef.current = setInterval(() => {
+        step += 1;
+        if (step < loadingSteps.length) {
+          setLoadingStep(step);
+        }
+      }, 6000);
+    } else {
+      if (stepTimerRef.current) {
+        clearInterval(stepTimerRef.current);
+        stepTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    };
+  }, [isAnalyzingPbv]);
 
   const handleGeneratePbvScore = useCallback(async () => {
     if (!pbvUrl.trim() || !pbvUrl.includes('.')) {
@@ -176,7 +205,7 @@ export default function BrandVisibility() {
           { name: 'Search Volume', score: targetDecileScores.searchVolumeIndex, rationale: targetFirm.rationales?.searchVolumeIndex ?? 'N/A' },
           { name: 'News Mentions', score: targetDecileScores.newsMentions, rationale: targetFirm.rationales?.newsMentions ?? 'N/A' },
           { name: 'Social Media Engagement', score: targetDecileScores.socialMediaEngagement, rationale: targetFirm.rationales?.socialMediaEngagement ?? 'N/A' },
-          { name: 'Regulatory Actions (Lower is Better)', score: targetDecileScores.regulatoryActionCount, rationale: targetFirm.rationales?.regulatoryActionCount ?? 'N/A' },
+          { name: 'Regulatory Track Record', score: targetDecileScores.regulatoryActionCount, rationale: targetFirm.rationales?.regulatoryActionCount ?? 'N/A' },
           { name: 'Senior Team Tenure', score: targetDecileScores.seniorProfilesCount, rationale: targetFirm.rationales?.seniorProfilesCount ?? 'N/A' },
           { name: 'Website Transparency', score: targetDecileScores.websiteTransparencyScore, rationale: targetFirm.rationales?.websiteTransparencyScore ?? 'N/A' },
           { name: 'Recent Fund Launches', score: targetDecileScores.fundLaunchCount3Y, rationale: targetFirm.rationales?.fundLaunchCount3Y ?? 'N/A' },
@@ -248,15 +277,46 @@ export default function BrandVisibility() {
 
         {isAnalyzingPbv && (
           <Card>
-            <CardContent className="p-6 space-y-4">
-              <Skeleton className="h-8 w-3/4" />
-              <Skeleton className="h-24 w-full" />
-              <div className="grid grid-cols-3 gap-4">
-                <Skeleton className="h-20" />
-                <Skeleton className="h-20" />
-                <Skeleton className="h-20" />
+            <CardContent className="p-8">
+              <div className="text-center mb-8">
+                <div className="relative inline-flex items-center justify-center w-16 h-16 mb-4">
+                  <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+                  <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+                  <Globe className="h-6 w-6 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900">Analyzing Brand Visibility</h3>
+                <p className="text-sm text-slate-500 mt-1">This typically takes 20–40 seconds</p>
               </div>
-              <Skeleton className="h-40 w-full" />
+
+              <div className="max-w-sm mx-auto">
+                <Progress value={((loadingStep + 1) / loadingSteps.length) * 100} className="h-2 mb-6" />
+
+                <div className="space-y-3">
+                  {loadingSteps.map((step, i) => {
+                    const StepIcon = step.icon;
+                    const isActive = i === loadingStep;
+                    const isDone = i < loadingStep;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-500 ${
+                          isActive ? 'bg-blue-50 text-blue-700' : isDone ? 'text-slate-400' : 'text-slate-300'
+                        }`}
+                      >
+                        {isDone ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                        ) : isActive ? (
+                          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        ) : (
+                          <StepIcon className="h-4 w-4 shrink-0" />
+                        )}
+                        <span className={`text-sm ${isActive ? 'font-medium' : ''}`}>{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}

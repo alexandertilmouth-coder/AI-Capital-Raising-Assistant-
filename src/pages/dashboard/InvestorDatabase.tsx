@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Loader2, Upload, FileSpreadsheet, X, ExternalLink, Linkedin, Database, Users } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, X, ExternalLink, Linkedin, Database, Users, RotateCcw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -109,9 +109,96 @@ export default function InvestorDatabase() {
     setDbError(null);
   };
 
-  return (
+  const hasResults = investorMatchResults.length > 0;
+
+  const handleStartOver = () => {
+    setInvestorDB([]);
+    setInvestorDBFile(null);
+    setInvestorMatchResults([]);
+    setDbError(null);
+  };
+
+  return hasResults ? (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <FileSpreadsheet className="h-4 w-4 text-blue-600 shrink-0" />
+          <span className="text-sm text-slate-600 truncate">
+            {investorDBFile?.name} &middot; {investorMatchResults.length} investors scored
+          </span>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleStartOver} className="shrink-0 ml-4">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Start Over
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-slate-900">
+            Investor Match Results ({investorMatchResults.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {investorMatchResults.map((investor, i) => (
+            <div key={i} className="border border-slate-100 rounded-lg p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="min-w-0">
+                  <h4 className="font-medium text-slate-900">{investor.name}</h4>
+                  {investor.companyName && (
+                    <p className="text-sm text-slate-500">{investor.companyName}</p>
+                  )}
+                </div>
+                <Badge
+                  variant="secondary"
+                  className={`shrink-0 ${getMatchColor(investor.matchScore)}`}
+                >
+                  {investor.matchScore}% match
+                </Badge>
+              </div>
+
+              <div className="mb-3">
+                <div className="w-full bg-slate-100 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${getMatchBg(investor.matchScore)}`}
+                    style={{ width: `${investor.matchScore}%` }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 mb-3">{investor.reason}</p>
+
+              <div className="flex items-center gap-3">
+                {investor.companyUrl && (
+                  <a
+                    href={investor.companyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Website
+                  </a>
+                )}
+                {investor.linkedinUrl && (
+                  <a
+                    href={investor.linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-600"
+                  >
+                    <Linkedin className="h-3.5 w-3.5" />
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  ) : (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Left Column - Upload & Controls */}
       <div className="lg:col-span-5 space-y-6">
         <Card>
           <CardHeader>
@@ -124,7 +211,6 @@ export default function InvestorDatabase() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Ideal Profile Status */}
             <div className={`rounded-md p-3 border ${idealInvestorProfile ? 'bg-green-50 border-green-100' : 'bg-yellow-50 border-yellow-100'}`}>
               <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${idealInvestorProfile ? 'text-green-700' : 'text-yellow-700'}`}>
                 Ideal Investor Profile
@@ -138,7 +224,6 @@ export default function InvestorDatabase() {
               )}
             </div>
 
-            {/* CSV Upload */}
             <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
               <div className="flex flex-col items-center">
                 <FileSpreadsheet className="h-7 w-7 text-slate-400 mb-2" />
@@ -203,7 +288,6 @@ export default function InvestorDatabase() {
         </Card>
       </div>
 
-      {/* Right Column - Results */}
       <div className="lg:col-span-7 space-y-6">
         {dbError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4">
@@ -219,7 +303,7 @@ export default function InvestorDatabase() {
           </div>
         )}
 
-        {investorMatchResults.length === 0 && !isScoring && !dbError && (
+        {!isScoring && !dbError && (
           <div className="flex items-center justify-center min-h-[300px] rounded-lg border-2 border-dashed border-slate-200 bg-white">
             <div className="text-center">
               <Users className="h-12 w-12 text-slate-300 mx-auto mb-3" />
@@ -227,72 +311,6 @@ export default function InvestorDatabase() {
               <p className="text-sm text-slate-300 mt-1">Upload a CSV and click score to begin</p>
             </div>
           </div>
-        )}
-
-        {investorMatchResults.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-slate-900">
-                Investor Match Results ({investorMatchResults.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {investorMatchResults.map((investor, i) => (
-                <div key={i} className="border border-slate-100 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="min-w-0">
-                      <h4 className="font-medium text-slate-900">{investor.name}</h4>
-                      {investor.companyName && (
-                        <p className="text-sm text-slate-500">{investor.companyName}</p>
-                      )}
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={`shrink-0 ${getMatchColor(investor.matchScore)}`}
-                    >
-                      {investor.matchScore}% match
-                    </Badge>
-                  </div>
-
-                  <div className="mb-3">
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-500 ${getMatchBg(investor.matchScore)}`}
-                        style={{ width: `${investor.matchScore}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <p className="text-sm text-slate-600 mb-3">{investor.reason}</p>
-
-                  <div className="flex items-center gap-3">
-                    {investor.companyUrl && (
-                      <a
-                        href={investor.companyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        Website
-                      </a>
-                    )}
-                    {investor.linkedinUrl && (
-                      <a
-                        href={investor.linkedinUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-600"
-                      >
-                        <Linkedin className="h-3.5 w-3.5" />
-                        LinkedIn
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         )}
       </div>
     </div>
