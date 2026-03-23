@@ -1,21 +1,45 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Loader2, RefreshCw, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectOption } from '@/components/ui/select';
 import { findClosedDeals, generateMarketAppetiteAnalysis } from '@/services/geminiService';
+import { fetchEdgarDeals } from '@/services/secEdgarService';
 import { renderMarkdown } from '@/lib/markdown';
 import { initialDeals, initialMarketAppetite } from '@/data/initialData';
 import PieChart from '@/components/PieChart';
 import type { ClosedDeal } from '@/types';
 
 export default function ClosedFunds() {
-  const [closedDeals, setClosedDeals] = useState<ClosedDeal[]>(initialDeals);
+  const [closedDeals, setClosedDeals] = useState<ClosedDeal[]>([]);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isFindingDeals, setIsFindingDeals] = useState(false);
   const [dealsError, setDealsError] = useState<string | null>(null);
-  const [marketAppetite, setMarketAppetite] = useState<string | null>(initialMarketAppetite);
+  const [marketAppetite, setMarketAppetite] = useState<string | null>(null);
   const [filters, setFilters] = useState({ assetClass: 'All', geography: 'All', strategy: 'All' });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const deals = await fetchEdgarDeals();
+        if (!cancelled && deals.length > 0) {
+          setClosedDeals(deals);
+          setIsLoadingInitial(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('SEC EDGAR fetch failed, falling back to seed data:', err);
+      }
+      if (!cancelled) {
+        setClosedDeals(initialDeals);
+        setMarketAppetite(initialMarketAppetite);
+        setIsLoadingInitial(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleFindDeals = useCallback(async () => {
     setIsFindingDeals(true);
@@ -209,6 +233,9 @@ export default function ClosedFunds() {
             <p className="text-xs text-slate-400">
               Showing {filteredDeals.length} of {closedDeals.length} deals
             </p>
+            <p className="text-xs text-slate-400 mt-1">
+              Source: SEC EDGAR Form D filings
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -221,14 +248,16 @@ export default function ClosedFunds() {
           </div>
         )}
 
-        {isFindingDeals && (
+        {(isFindingDeals || isLoadingInitial) && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <span className="ml-3 text-slate-500">Searching for recently closed deals...</span>
+            <span className="ml-3 text-slate-500">
+              {isLoadingInitial ? 'Loading deals from SEC EDGAR...' : 'Searching for recently closed deals...'}
+            </span>
           </div>
         )}
 
-        {filteredDeals.length === 0 && !isFindingDeals && (
+        {filteredDeals.length === 0 && !isFindingDeals && !isLoadingInitial && (
           <div className="flex items-center justify-center min-h-[200px] rounded-lg border-2 border-dashed border-slate-200 bg-white">
             <p className="text-slate-400 font-medium">No deals match the selected filters.</p>
           </div>

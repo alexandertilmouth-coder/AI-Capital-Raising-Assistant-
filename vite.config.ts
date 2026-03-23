@@ -9,6 +9,17 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          '/api/sec-archives': {
+            target: 'https://www.sec.gov/Archives/edgar/data',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/sec-archives/, ''),
+            headers: {
+              'User-Agent': 'AI-Capital-Raising-Assistant research@example.com',
+              'Accept': 'application/xml, text/xml',
+            },
+          },
+        },
       },
       plugins: [react(), tailwindcss()],
       define: {
